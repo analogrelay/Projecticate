@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using McMaster.Extensions.CommandLineUtils;
@@ -78,6 +79,8 @@ namespace Projecticate
 
         internal class DemoFileSystem : ProjectedFileSystem
         {
+            private static byte[] _FileContent = Encoding.UTF8.GetBytes("This is a virtual file!");
+
             public DemoFileSystem(string rootPath) : base(rootPath)
             {
             }
@@ -87,13 +90,46 @@ namespace Projecticate
                 Console.WriteLine($"Enumerating: '{relativePath}' (search pattern: {searchPattern})");
                 if (string.IsNullOrEmpty(relativePath))
                 {
-                    yield return new ProjectedDirectoryEntry("a", FileBasicInfo.File(42, DateTime.Now, DateTime.Now, DateTime.Now, DateTime.Now));
-                    yield return new ProjectedDirectoryEntry("b", FileBasicInfo.File(24, DateTime.Now, DateTime.Now, DateTime.Now, DateTime.Now));
+                    yield return new ProjectedDirectoryEntry("a", FileBasicInfo.File(_FileContent.Length, DateTime.Now, DateTime.Now, DateTime.Now, DateTime.Now));
+                    yield return new ProjectedDirectoryEntry("b", FileBasicInfo.File(_FileContent.Length, DateTime.Now, DateTime.Now, DateTime.Now, DateTime.Now));
                     yield return new ProjectedDirectoryEntry("c", FileBasicInfo.Directory(DateTime.Now, DateTime.Now, DateTime.Now, DateTime.Now));
                 }
                 else
                 {
-                    yield return new ProjectedDirectoryEntry("d", FileBasicInfo.File(80, DateTime.Now, DateTime.Now, DateTime.Now, DateTime.Now));
+                    yield return new ProjectedDirectoryEntry("d", FileBasicInfo.File(_FileContent.Length, DateTime.Now, DateTime.Now, DateTime.Now, DateTime.Now));
+                }
+            }
+
+            public override bool TryGetFileData(string relativePath, long offset, int length, TriggeringProcessContext triggeringProcess, out ReadOnlySpan<byte> data)
+            {
+                Console.WriteLine($"TryGetFileData: {relativePath} ({offset}, {length})");
+                if (offset >= 0 && (offset + length) <= _FileContent.Length)
+                {
+                    data = _FileContent.AsSpan((int)offset, length);
+                    return true;
+                }
+
+                data = ReadOnlySpan<byte>.Empty;
+                return false;
+            }
+
+            public override bool TryGetPlaceholderInfo(string relativePath, TriggeringProcessContext triggeringProcess, out PlaceholderInfo placeholderInfo)
+            {
+                Console.WriteLine($"Get Placeholder for: '{relativePath}' (from {triggeringProcess.Process.ProcessName}:{triggeringProcess.ProcessId})");
+                switch (relativePath)
+                {
+                    case "a":
+                        placeholderInfo = new PlaceholderInfo(FileBasicInfo.File(_FileContent.Length, DateTime.Now, DateTime.Now, DateTime.Now, DateTime.Now));
+                        return true;
+                    case "b":
+                        placeholderInfo = new PlaceholderInfo(FileBasicInfo.File(_FileContent.Length, DateTime.Now, DateTime.Now, DateTime.Now, DateTime.Now));
+                        return true;
+                    case "c":
+                        placeholderInfo = new PlaceholderInfo(FileBasicInfo.Directory(DateTime.Now, DateTime.Now, DateTime.Now, DateTime.Now));
+                        return true;
+                    default:
+                        placeholderInfo = null;
+                        return false;
                 }
             }
         }

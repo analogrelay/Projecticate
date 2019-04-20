@@ -29,8 +29,51 @@ namespace Projecticate
             IntPtr dirEntryBufferHandle);
 
         [DllImport("projectedfslib.dll", CharSet = CharSet.Unicode)]
+        public static extern uint PrjWritePlaceholderInfo(
+            IntPtr namespaceVirtualizationContext,
+            [MarshalAs(UnmanagedType.LPWStr)]
+            string destinationFileName,
+            in PRJ_PLACEHOLDER_INFO placeholderInfo,
+            uint placeholderInfoSize);
+
+        [DllImport("projectedfslib.dll", CharSet = CharSet.Unicode)]
+        public unsafe static extern uint PrjWriteFileData(
+            IntPtr namespaceVirtualizationContext,
+            in Guid dataStreamId,
+            byte* buffer,
+            ulong byteOffset,
+            uint length);
+
+
+        [DllImport("projectedfslib.dll", CharSet = CharSet.Unicode)]
         public static extern void PrjStopVirtualizing(IntPtr namespaceVirtualizationContext);
 
+        [StructLayout(LayoutKind.Sequential)]
+        public struct PRJ_PLACEHOLDER_INFO
+        {
+            public PRJ_FILE_BASIC_INFO FileBasicInfo;
+            public uint EaBufferSize;
+            public uint OffsetToFirstEa;
+            public uint SecurityBufferSize;
+            public uint OffsetToFirstSecurityDescriptor;
+            public uint StreamsInfoBufferSize;
+            public uint OffsetToFirstStreamInfo;
+            public PRJ_PLACEHOLDER_VERSION_INFO VersionInfo;
+            public IntPtr VariableData;
+
+            public static PRJ_PLACEHOLDER_INFO Create(PlaceholderInfo placeholderInfo)
+            {
+                return new PRJ_PLACEHOLDER_INFO()
+                {
+                    FileBasicInfo = PRJ_FILE_BASIC_INFO.Create(placeholderInfo.BasicInfo),
+                    VersionInfo = placeholderInfo.VersionInfo == null ?
+                        PRJ_PLACEHOLDER_VERSION_INFO.Empty :
+                        PRJ_PLACEHOLDER_VERSION_INFO.Create(placeholderInfo.VersionInfo)
+                };
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
         public struct PRJ_FILE_BASIC_INFO
         {
             public bool IsDirectory;
@@ -56,22 +99,39 @@ namespace Projecticate
             }
         }
 
+        [StructLayout(LayoutKind.Sequential)]
         public struct PRJ_PLACEHOLDER_VERSION_INFO
         {
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)]
+            public const int Size = 128;
+            public static readonly PRJ_PLACEHOLDER_VERSION_INFO Empty = new PRJ_PLACEHOLDER_VERSION_INFO()
+            {
+                ProviderId = new byte[Size],
+                ContentId = new byte[Size],
+            };
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = Size)]
             public byte[] ProviderId;
 
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)]
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = Size)]
             public byte[] ContentId;
+
+            public static PRJ_PLACEHOLDER_VERSION_INFO Create(PlaceholderVersionInfo versionInfo)
+            {
+                return new PRJ_PLACEHOLDER_VERSION_INFO()
+                {
+                    ProviderId = versionInfo.ProviderId ?? Array.Empty<byte>(),
+                    ContentId = versionInfo.ContentId ?? Array.Empty<byte>(),
+                };
+            }
         }
 
-        public enum PRJ_CALLBACK_DATA_FLAGS: uint
+        public enum PRJ_CALLBACK_DATA_FLAGS : uint
         {
             PRJ_CB_DATA_FLAG_ENUM_RESTART_SCAN = 0x00000001,
             PRJ_CB_DATA_FLAG_ENUM_RETURN_SINGLE_ENTRY = 0x00000002
         }
 
-        public enum PRJ_NOTIFICATION: uint
+        public enum PRJ_NOTIFICATION : uint
         {
             PRJ_NOTIFICATION_FILE_OPENED = 0x00000002,
             PRJ_NOTIFICATION_NEW_FILE_CREATED = 0x00000004,
@@ -87,7 +147,7 @@ namespace Projecticate
             PRJ_NOTIFICATION_FILE_PRE_CONVERT_TO_FULL = 0x00001000,
         }
 
-        public enum PRJ_NOTIFY_TYPES: uint
+        public enum PRJ_NOTIFY_TYPES : uint
         {
             PRJ_NOTIFY_NONE = 0x00000000,
             PRJ_NOTIFY_SUPPRESS_NOTIFICATIONS = 0x00000001,
@@ -106,6 +166,7 @@ namespace Projecticate
             PRJ_NOTIFY_USE_EXISTING_MASK = 0xFFFFFFFF
         }
 
+        [StructLayout(LayoutKind.Sequential)]
         public struct PRJ_CALLBACK_DATA
         {
             public uint Size;

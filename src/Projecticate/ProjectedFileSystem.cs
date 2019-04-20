@@ -49,6 +49,8 @@ namespace Projecticate
 
         // TODO: Async!
         public abstract IEnumerable<ProjectedDirectoryEntry> EnumerateDirectory(string relativePath, string searchPattern);
+        public abstract bool TryGetPlaceholderInfo(string relativePath, TriggeringProcessContext triggeringProcess, out PlaceholderInfo placeholderInfo);
+        public abstract bool TryGetFileData(string relativePath, long offset, int length, TriggeringProcessContext triggeringProcess, out ReadOnlySpan<byte> data);
 
         public void Dispose()
         {
@@ -122,17 +124,33 @@ namespace Projecticate
                 throw new InvalidOperationException("Unable to find active enumeration!");
             }
 
-            public uint GetFileDataCallback(in NativeMethods.PRJ_CALLBACK_DATA callbackData, ulong byteOffset, uint length)
+            public unsafe uint GetFileDataCallback(in NativeMethods.PRJ_CALLBACK_DATA callbackData, ulong byteOffset, uint length)
             {
-                // TODO
                 Console.WriteLine($"GetFileData: {callbackData.FilePathName}");
+                var triggeringProcess = new TriggeringProcessContext((int)callbackData.TriggeringProcessId, callbackData.TriggeringProcessImageFileName);
+                if (_fs.TryGetFileData(callbackData.FilePathName, (long)byteOffset, (int)length, triggeringProcess, out var data))
+                {
+                    int hr;
+                    fixed (byte* ptr = data)
+                    {
+                        hr = (int)NativeMethods.PrjWriteFileData(_fs._context, callbackData.DataStreamId, ptr, byteOffset, (uint)data.Length);
+                    }
+                    Marshal.ThrowExceptionForHR(hr);
+                }
                 return 0;
             }
 
             public uint GetPlaceholderInfoCallback(in NativeMethods.PRJ_CALLBACK_DATA callbackData)
             {
-                // TODO
-                Console.WriteLine($"GetPlaceholderInfo: {callbackData.FilePathName}");
+                var triggeringProcess = new TriggeringProcessContext((int)callbackData.TriggeringProcessId, callbackData.TriggeringProcessImageFileName);
+                if (_fs.TryGetPlaceholderInfo(callbackData.FilePathName, triggeringProcess, out var placeholder))
+                {
+                    var placeholderInfo = NativeMethods.PRJ_PLACEHOLDER_INFO.Create(placeholder);
+                    var size = Marshal.SizeOf(placeholderInfo);
+                    var hr = NativeMethods.PrjWritePlaceholderInfo(_fs._context, callbackData.FilePathName, placeholderInfo, (uint)size);
+                    Marshal.ThrowExceptionForHR((int)hr);
+                }
+
                 return 0;
             }
 
